@@ -2,10 +2,9 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
-#if UNITY_EDITOR
 using UnityEditor;
-#endif
 using LibBSP;
+using static VMTLoader.VMTLoader;
 
 namespace BSPImporter
 {
@@ -14,7 +13,6 @@ namespace BSPImporter
     /// </summary>
     public class BSPLoader
     {
-
         /// <summary>
         /// Enum with options for combining <see cref="Mesh"/>es in the BSP import process.
         /// </summary>
@@ -97,7 +95,7 @@ namespace BSPImporter
             /// </summary>
             public AssetSavingOptions assetSavingOptions;
             /// <summary>
-            /// At edit=time, path within Assets to save generated <see cref="Material"/>s to.
+            /// At edit-time, path within Assets to save generated <see cref="Material"/>s to.
             /// </summary>
             public string materialPath;
             /// <summary>
@@ -141,11 +139,7 @@ namespace BSPImporter
         {
             get
             {
-#if UNITY_EDITOR
                 return EditorApplication.isPlaying;
-#else
-                return true;
-#endif
             }
         }
 
@@ -170,6 +164,7 @@ namespace BSPImporter
                 Debug.LogError("Cannot import " + settings.path + ": The path is invalid.");
                 return;
             }
+
             BSP bsp = new BSP(settings.path);
             try
             {
@@ -177,9 +172,7 @@ namespace BSPImporter
             }
             catch (Exception e)
             {
-#if UNITY_EDITOR
                 EditorUtility.ClearProgressBar();
-#endif
                 Debug.LogException(e);
             }
         }
@@ -200,13 +193,12 @@ namespace BSPImporter
             for (int i = 0; i < bsp.entities.Count; ++i)
             {
                 Entity entity = bsp.entities[i];
-#if UNITY_EDITOR
                 if (EditorUtility.DisplayCancelableProgressBar("Importing BSP", entity.ClassName + (!string.IsNullOrEmpty(entity.Name) ? " " + entity.Name : ""), i / (float)bsp.entities.Count))
                 {
                     EditorUtility.ClearProgressBar();
                     return;
                 }
-#endif
+
                 EntityInstance instance = CreateEntityInstance(entity);
                 entityInstances.Add(instance);
                 namedEntities[entity.Name].Add(instance);
@@ -247,26 +239,18 @@ namespace BSPImporter
                 }
             }
 
-#if UNITY_EDITOR
             if (!IsRuntime)
             {
                 if ((settings.assetSavingOptions & AssetSavingOptions.Prefab) > 0)
                 {
                     string prefabPath = Path.Combine(Path.Combine("Assets", settings.meshPath), bsp.MapNameNoExtension + ".prefab").Replace('\\', '/');
                     Directory.CreateDirectory(Path.GetDirectoryName(prefabPath));
-#if UNITY_2018_3_OR_NEWER
                     PrefabUtility.SaveAsPrefabAssetAndConnect(root, prefabPath, InteractionMode.AutomatedAction);
-#elif !UNITY_3_4
-					PrefabUtility.CreatePrefab(prefabPath, root, ReplacePrefabOptions.ConnectToPrefab);
-#else
-					UnityEngine.Object newPrefab = EditorUtility.CreateEmptyPrefab(prefabPath);
-					EditorUtility.ReplacePrefab(root, newPrefab, ReplacePrefabOptions.ConnectToPrefab);
-#endif
                 }
                 AssetDatabase.Refresh();
             }
+
             EditorUtility.ClearProgressBar();
-#endif
         }
 
         /// <summary>
@@ -280,13 +264,11 @@ namespace BSPImporter
         /// <returns>The loaded <see cref="Texture2D"/>.</returns>
         private Texture2D LoadTextureAtPath(string texturePath, bool textureIsAsset)
         {
-#if UNITY_EDITOR
             if (textureIsAsset)
             {
                 return AssetDatabase.LoadAssetAtPath(texturePath, typeof(Texture2D)) as Texture2D;
             }
             else
-#endif
             {
                 if (texturePath.EndsWith(".tga"))
                 {
@@ -308,19 +290,15 @@ namespace BSPImporter
         /// <param name="textureName">Name of the <see cref="Texture2D"/> to load.</param>
         public void LoadMaterial(string textureName)
         {
-#if UNITY_5 || UNITY_5_3_OR_NEWER
             Shader def = Shader.Find("Standard");
-#else
-            Shader def = Shader.Find("Diffuse");
-#endif
             Shader fallbackShader = Shader.Find("VR/SpatialMapping/Wireframe");
 
-            string texturePath;
+            string textureBasePath = settings.texturePath;
             bool textureIsAsset = false;
+            /*
             if (settings.texturePath.Contains(":"))
             {
                 texturePath = Path.Combine(settings.texturePath, textureName).Replace('\\', '/');
-#if UNITY_EDITOR
                 if (texturePath.StartsWith(Application.dataPath))
                 {
                     texturePath = "Assets/" + texturePath.Substring(Application.dataPath.Length + 1);
@@ -330,21 +308,17 @@ namespace BSPImporter
                 {
                     Debug.LogWarning("Using a texture path outside of Assets will not work with material saving enabled.");
                 }
-#endif
             }
             else
             {
-#if UNITY_EDITOR
                 texturePath = Path.Combine(Path.Combine("Assets", settings.texturePath), textureName).Replace('\\', '/');
                 textureIsAsset = true;
-#else
-                texturePath = Path.Combine(settings.texturePath, textureName).Replace('\\', '/');
-#endif
             }
+            */
 
             Texture2D texture = null;
 
-            texturePath = texturePath.ToLower();
+            string texturePath = Path.Combine(textureBasePath, textureName.ToLower());
             if (File.Exists(texturePath + ".png"))
             {
                 texture = LoadTextureAtPath(texturePath + ".png", textureIsAsset);
@@ -357,35 +331,45 @@ namespace BSPImporter
             {
                 texture = LoadTextureAtPath(texturePath + ".tga", textureIsAsset);
             }
+            /*
             else if (File.Exists(texturePath + ".vtf"))
             {
                 Debug.Log("Trying to VTFLoader.LoadFile: " + texturePath + ".vtf");
                 texture = VTFFile.VTFLoader.LoadFile(textureName, texturePath + ".vtf");
             }
+            */
             else if (File.Exists(texturePath + ".vmt"))
             {
-                Debug.Log("Couldn't find texturePath but VMT exists!: " + texturePath + "vmt");
+                VMTFile vmt = ParseVMTFile(texturePath + ".vmt");
+                string basetexturePath = Path.Combine(textureBasePath, vmt.basetexture + ".png");
+                if (File.Exists(basetexturePath))
+                {
+                    texture = LoadTextureAtPath(basetexturePath, textureIsAsset);
+                }
+                else
+                {
+                    Debug.Log($"Guessed basetexture didn't exist: {basetexturePath}");
+                }
             }
 
             if (texture == null)
             {
-                Debug.LogWarning("Texture " + textureName + " could not be loaded (does the file exist?)");
+                Debug.LogWarning($"Texture {textureName} not found! [{texturePath}]");
             }
 
             Material material = null;
             bool materialIsAsset = false;
-#if UNITY_EDITOR
             string materialPath = Path.Combine(Path.Combine("Assets", settings.materialPath), textureName + ".mat").Replace('\\', '/');
             if (!IsRuntime && (settings.assetSavingOptions & AssetSavingOptions.Materials) > 0)
             {
                 material = AssetDatabase.LoadAssetAtPath(materialPath, typeof(Material)) as Material;
             }
+
             if (material != null)
             {
                 materialIsAsset = true;
             }
             else
-#endif
             {
                 material = new Material(def);
                 material.name = textureName;
@@ -401,13 +385,12 @@ namespace BSPImporter
                 {
                     material = new Material(fallbackShader);
                 }
-#if UNITY_EDITOR
+
                 if (!IsRuntime && (settings.assetSavingOptions & AssetSavingOptions.Materials) > 0)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(materialPath));
                     AssetDatabase.CreateAsset(material, materialPath);
                 }
-#endif
             }
 
             materialDirectory[textureName] = material;
@@ -561,14 +544,12 @@ namespace BSPImporter
                             textureMeshes[i].RecalculateNormals();
                         }
                         textureMeshes[i].AddMeshToGameObject(new Material[] { materials[i] }, textureGameObject);
-#if UNITY_EDITOR
                         if (!IsRuntime && (settings.assetSavingOptions & AssetSavingOptions.Meshes) > 0)
                         {
                             string meshPath = Path.Combine(Path.Combine(Path.Combine("Assets", settings.meshPath), bsp.MapNameNoExtension), "mesh_" + textureMeshes[i].GetHashCode() + ".asset").Replace('\\', '/');
                             Directory.CreateDirectory(Path.GetDirectoryName(meshPath));
                             AssetDatabase.CreateAsset(textureMeshes[i], meshPath);
                         }
-#endif
                     }
                     ++i;
                 }
@@ -582,14 +563,12 @@ namespace BSPImporter
                         mesh.RecalculateNormals();
                     }
                     mesh.AddMeshToGameObject(materials, gameObject);
-#if UNITY_EDITOR
                     if (!IsRuntime && (settings.assetSavingOptions & AssetSavingOptions.Meshes) > 0)
                     {
                         string meshPath = Path.Combine(Path.Combine(Path.Combine("Assets", settings.meshPath), bsp.MapNameNoExtension), "mesh_" + mesh.GetHashCode() + ".asset").Replace('\\', '/');
                         Directory.CreateDirectory(Path.GetDirectoryName(meshPath));
                         AssetDatabase.CreateAsset(mesh, meshPath);
                     }
-#endif
                 }
             }
             else
@@ -611,19 +590,16 @@ namespace BSPImporter
                             mesh.RecalculateNormals();
                         }
                         mesh.AddMeshToGameObject(new Material[] { material }, faceGameObject);
-#if UNITY_EDITOR
                         if (!IsRuntime && (settings.assetSavingOptions & AssetSavingOptions.Meshes) > 0)
                         {
                             string meshPath = Path.Combine(Path.Combine(Path.Combine("Assets", settings.meshPath), bsp.MapNameNoExtension), "mesh_" + mesh.GetHashCode() + ".asset").Replace('\\', '/');
                             Directory.CreateDirectory(Path.GetDirectoryName(meshPath));
                             AssetDatabase.CreateAsset(mesh, meshPath);
                         }
-#endif
                     }
                     ++i;
                 }
             }
-
         }
 
         /// <summary>
@@ -639,6 +615,7 @@ namespace BSPImporter
             {
                 LoadMaterial(textureName);
             }
+
             if (materialDirectory[textureName].HasProperty("_MainTex") && materialDirectory[textureName].mainTexture != null)
             {
                 dims = new Vector2(materialDirectory[textureName].mainTexture.width, materialDirectory[textureName].mainTexture.height);
