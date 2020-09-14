@@ -86,10 +86,10 @@ namespace VTFFile
             ReadData(
                 BR,
                 header,
-                 out byte[] ImageData,
-                 out uint ImageDataSize,
-                 out byte[] ThumbnailImageData,
-                 out uint ThumbnailDataSize
+                out byte[] ImageData,
+                out uint ImageDataSize,
+                out byte[] ThumbnailImageData,
+                out uint ThumbnailDataSize
              );
 
             BR.BaseStream.Dispose();
@@ -145,22 +145,25 @@ namespace VTFFile
         private static Texture2D CreateTexture(string name, VTFHeader header, byte[] ImageData)
         {
             Texture2D tex;
+            Debug.Log($"CreateTexture: {header.highResImageFormat}, {header.width}x{header.height}");
             if (header.highResImageFormat == VTFImageFormat.IMAGE_FORMAT_DXT5)
             {
                 tex = new Texture2D((int)header.width, (int)header.height, TextureFormat.DXT5, false);
                 int offset = (header.width * header.height);
                 byte[] buf = new byte[offset];
                 Buffer.BlockCopy(ImageData, ImageData.Length - offset, buf, 0, offset);
-
                 tex.LoadRawTextureData(buf);
                 tex.Apply(true);
+
+                /*
                 Color32[] tempCol = tex.GetPixels32();
                 tex = new Texture2D((int)header.width, (int)header.height, TextureFormat.RGBA32, true);
                 tex.SetPixels32(tempCol);
                 tex.Apply(true);
                 tex.Compress(true);
-                tex.name = name;
+                */
 
+                tex.name = name;
                 return tex;
             }
             else if (header.highResImageFormat == VTFImageFormat.IMAGE_FORMAT_DXT1)
@@ -172,11 +175,14 @@ namespace VTFFile
                 tex.LoadRawTextureData(buf);
                 tex.Apply();
 
+                /*
                 Color32[] tempCol = tex.GetPixels32();
                 tex = new Texture2D((int)header.width, (int)header.height, TextureFormat.RGBA32, true);
                 tex.SetPixels32(tempCol);
                 tex.Apply(true);
                 tex.Compress(true);
+                */
+
                 tex.name = name;
                 return tex;
             }

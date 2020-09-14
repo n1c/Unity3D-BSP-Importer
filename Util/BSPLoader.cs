@@ -345,8 +345,6 @@ namespace BSPImporter
             Texture2D texture = null;
 
             texturePath = texturePath.ToLower();
-            Debug.Log($"Trying to load texturePath:({texturePath}), textureName:({textureName})");
-
             if (File.Exists(texturePath + ".png"))
             {
                 texture = LoadTextureAtPath(texturePath + ".png", textureIsAsset);
@@ -361,10 +359,10 @@ namespace BSPImporter
             }
             else if (File.Exists(texturePath + ".vtf"))
             {
-                Debug.Log("trying to VTFLoader.LoadFile: " + texturePath + ".vtf");
+                Debug.Log("Trying to VTFLoader.LoadFile: " + texturePath + ".vtf");
                 texture = VTFFile.VTFLoader.LoadFile(textureName, texturePath + ".vtf");
             }
-            else if (File.Exists(texturePath + "vmt"))
+            else if (File.Exists(texturePath + ".vmt"))
             {
                 Debug.Log("Couldn't find texturePath but VMT exists!: " + texturePath + "vmt");
             }
